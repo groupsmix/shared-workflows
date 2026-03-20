@@ -1,0 +1,277 @@
+name: Preview
+
+on:
+  workflow_call:
+    inputs:
+      provider:
+        description: "Preview provider: vercel, netlify, or custom"
+        required: false
+        type: string
+        default: "vercel"
+      language:
+        description: "Primary language: node, python, or other"
+        required: false
+        type: string
+        default: "node"
+      node-version:
+        description: "Node.js version to use"
+        required: false
+        type: string
+        default: "20"
+      package-manager:
+        description: "Package manager: npm, yarn, or pnpm"
+        required: false
+        type: string
+        default: "npm"
+      build-command:
+        description: "Custom build command (for custom provider)"
+        required: false
+        type: string
+        default: ""
+      install-command:
+        description: "Custom install command"
+        required: false
+        type: string
+        default: ""
+      deploy-command:
+        description: "Custom deploy command (for custom provider, should output URL)"
+        required: false
+        type: string
+        default: ""
+      working-directory:
+        description: "Working directory for all commands"
+        required: false
+        type: string
+        default: "."
+      vercel-org-id:
+        description: "Vercel organization ID"
+        required: false
+        type: string
+        default: ""
+      vercel-project-id:
+        description: "Vercel project ID"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      deploy-token:
+        description: "Deploy token (Vercel token, Netlify token, etc.)"
+        required: false
+
+jobs:
+  preview-vercel:
+    if: inputs.provider == 'vercel'
+    name: Deploy Preview (Vercel)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=preview --token=${{ secrets.deploy-token }}
+        env:
+          VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
+          VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
+
+      - name: Build project
+        run: vercel build --token=${{ secrets.deploy-token }}
+        env:
+          VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
+          VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
+
+      - name: Deploy preview
+        id: deploy
+        run: |
+          URL=$(vercel deploy --prebuilt --token=${{ secrets.deploy-token }})
+          echo "preview_url=$URL" >> $GITHUB_OUTPUT
+        env:
+          VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
+          VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
+
+      - name: Comment PR with preview URL
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = '${{ steps.deploy.outputs.preview_url }}';
+            const body = `## 🚀 Preview Deployment\n\n**URL:** ${url}\n\n*Deployed from commit ${context.sha.substring(0, 7)}*`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes('Preview Deployment'));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+  preview-netlify:
+    if: inputs.provider == 'netlify'
+    name: Deploy Preview (Netlify)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install dependencies
+        run: |
+          if [ -n "${{ inputs.install-command }}" ]; then
+            ${{ inputs.install-command }}
+          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            yarn install --frozen-lockfile
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            npm install -g pnpm && pnpm install --frozen-lockfile
+          else
+            npm ci
+          fi
+
+      - name: Build
+        run: |
+          if [ -n "${{ inputs.build-command }}" ]; then
+            ${{ inputs.build-command }}
+          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            yarn build
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm build
+          else
+            npm run build
+          fi
+
+      - name: Deploy to Netlify
+        id: deploy
+        run: |
+          npm install -g netlify-cli
+          OUTPUT=$(netlify deploy --dir=build --auth=${{ secrets.deploy-token }} --json)
+          URL=$(echo "$OUTPUT" | jq -r '.deploy_url')
+          echo "preview_url=$URL" >> $GITHUB_OUTPUT
+
+      - name: Comment PR with preview URL
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = '${{ steps.deploy.outputs.preview_url }}';
+            const body = `## 🚀 Preview Deployment (Netlify)\n\n**URL:** ${url}\n\n*Deployed from commit ${context.sha.substring(0, 7)}*`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes('Preview Deployment'));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+  preview-custom:
+    if: inputs.provider == 'custom'
+    name: Deploy Preview (Custom)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: inputs.language == 'node'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install dependencies
+        if: inputs.install-command != ''
+        run: ${{ inputs.install-command }}
+
+      - name: Build
+        if: inputs.build-command != ''
+        run: ${{ inputs.build-command }}
+
+      - name: Deploy preview
+        id: deploy
+        env:
+          DEPLOY_TOKEN: ${{ secrets.deploy-token }}
+        run: |
+          URL=$(${{ inputs.deploy-command }})
+          echo "preview_url=$URL" >> $GITHUB_OUTPUT
+
+      - name: Comment PR with preview URL
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = '${{ steps.deploy.outputs.preview_url }}';
+            const body = `## 🚀 Preview Deployment\n\n**URL:** ${url}\n\n*Deployed from commit ${context.sha.substring(0, 7)}*`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes('Preview Deployment'));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

@@ -1,0 +1,168 @@
+name: Notify
+
+on:
+  workflow_call:
+    inputs:
+      provider:
+        description: "Notification provider: slack, discord, or both"
+        required: true
+        type: string
+        default: "slack"
+      status:
+        description: "Notification status: success, failure, cancelled, or custom"
+        required: false
+        type: string
+        default: "success"
+      title:
+        description: "Notification title"
+        required: false
+        type: string
+        default: ""
+      message:
+        description: "Custom notification message"
+        required: false
+        type: string
+        default: ""
+      mention-on-failure:
+        description: "Mention users/roles on failure (e.g., @channel, @here, role ID)"
+        required: false
+        type: string
+        default: ""
+      include-commit-info:
+        description: "Include commit SHA and author in the notification"
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      slack-webhook-url:
+        description: "Slack incoming webhook URL"
+        required: false
+      discord-webhook-url:
+        description: "Discord webhook URL"
+        required: false
+
+jobs:
+  notify-slack:
+    if: inputs.provider == 'slack' || inputs.provider == 'both'
+    name: Notify Slack
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set notification color
+        id: color
+        run: |
+          case "${{ inputs.status }}" in
+            success) echo "color=#36a64f" >> $GITHUB_OUTPUT ;;
+            failure) echo "color=#dc3545" >> $GITHUB_OUTPUT ;;
+            cancelled) echo "color=#ffc107" >> $GITHUB_OUTPUT ;;
+            *) echo "color=#6c757d" >> $GITHUB_OUTPUT ;;
+          esac
+
+      - name: Build message
+        id: msg
+        run: |
+          TITLE="${{ inputs.title }}"
+          if [ -z "$TITLE" ]; then
+            TITLE="${{ github.repository }} — ${{ inputs.status }}"
+          fi
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
+
+          MSG="${{ inputs.message }}"
+          if [ -z "$MSG" ]; then
+            MSG="Workflow *${{ github.workflow }}* on \`${{ github.ref_name }}\` completed with status: *${{ inputs.status }}*"
+          fi
+
+          if [ "${{ inputs.include-commit-info }}" = "true" ]; then
+            MSG="$MSG\n\nCommit: \`${{ github.sha }}\`\nAuthor: ${{ github.actor }}\nRepo: <https://github.com/${{ github.repository }}|${{ github.repository }}>"
+          fi
+
+          if [ "${{ inputs.status }}" = "failure" ] && [ -n "${{ inputs.mention-on-failure }}" ]; then
+            MSG="${{ inputs.mention-on-failure }} $MSG"
+          fi
+
+          echo "message=$MSG" >> $GITHUB_OUTPUT
+
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.slack-webhook-url }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "attachments": [
+                {
+                  "color": "${{ steps.color.outputs.color }}",
+                  "blocks": [
+                    {
+                      "type": "section",
+                      "text": {
+                        "type": "mrkdwn",
+                        "text": "${{ steps.msg.outputs.message }}"
+                      }
+                    },
+                    {
+                      "type": "context",
+                      "elements": [
+                        {
+                          "type": "mrkdwn",
+                          "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View workflow run>"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+
+  notify-discord:
+    if: inputs.provider == 'discord' || inputs.provider == 'both'
+    name: Notify Discord
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set embed color
+        id: color
+        run: |
+          case "${{ inputs.status }}" in
+            success) echo "color=3066993" >> $GITHUB_OUTPUT ;;
+            failure) echo "color=15158332" >> $GITHUB_OUTPUT ;;
+            cancelled) echo "color=16776960" >> $GITHUB_OUTPUT ;;
+            *) echo "color=9807270" >> $GITHUB_OUTPUT ;;
+          esac
+
+      - name: Build message
+        id: msg
+        run: |
+          TITLE="${{ inputs.title }}"
+          if [ -z "$TITLE" ]; then
+            TITLE="${{ github.repository }} — ${{ inputs.status }}"
+          fi
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
+
+          MSG="${{ inputs.message }}"
+          if [ -z "$MSG" ]; then
+            MSG="Workflow **${{ github.workflow }}** on \`${{ github.ref_name }}\` completed with status: **${{ inputs.status }}**"
+          fi
+
+          if [ "${{ inputs.include-commit-info }}" = "true" ]; then
+            MSG="$MSG\n\nCommit: \`${{ github.sha }}\`\nAuthor: ${{ github.actor }}"
+          fi
+
+          if [ "${{ inputs.status }}" = "failure" ] && [ -n "${{ inputs.mention-on-failure }}" ]; then
+            MSG="${{ inputs.mention-on-failure }} $MSG"
+          fi
+
+          echo "message=$MSG" >> $GITHUB_OUTPUT
+
+      - name: Send Discord notification
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.discord-webhook-url }}
+        run: |
+          curl -s -H "Content-Type: application/json" \
+            -X POST "$DISCORD_WEBHOOK" \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"${{ steps.msg.outputs.title }}\",
+                \"description\": \"${{ steps.msg.outputs.message }}\",
+                \"color\": ${{ steps.color.outputs.color }},
+                \"url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+              }]
+            }"

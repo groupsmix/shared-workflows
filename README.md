@@ -10,9 +10,19 @@ Use these workflows from any repo by referencing them with `workflow_call`.
 
 | Workflow | File | Description |
 |----------|------|-------------|
-| **CI** | `.github/workflows/ci.yml` | Install dependencies, lint, and test |
-| **Build** | `.github/workflows/build.yml` | Build the project and optionally upload artifacts |
-| **Deploy** | `.github/workflows/deploy.yml` | Deploy on merge to main (or any trigger) |
+| **CI** | `ci.yml` | Install dependencies, lint, and test |
+| **Build** | `build.yml` | Build the project and optionally upload artifacts |
+| **Deploy** | `deploy.yml` | Deploy on merge to main (or any trigger) |
+| **Security** | `security.yml` | Dependency vulnerability scanning + CodeQL SAST |
+| **Release** | `release.yml` | Automated versioning, changelog, and GitHub releases |
+| **Docker** | `docker.yml` | Build and push Docker images (GHCR, DockerHub, ECR) |
+| **Preview** | `preview.yml` | Deploy PR preview environments (Vercel, Netlify, custom) |
+| **Code Quality** | `code-quality.yml` | Formatters, type checking, and coverage reporting |
+| **Notify** | `notify.yml` | Slack and Discord notifications |
+| **Stale** | `stale.yml` | Auto-close stale issues and PRs |
+| **Auto Label** | `label.yml` | Auto-label PRs based on changed file paths |
+
+All workflows are in `.github/workflows/`.
 
 ---
 
@@ -60,11 +70,127 @@ Use these workflows from any repo by referencing them with `workflow_call`.
 | `build-command` | No | — | Build command to run before deploy |
 | `working-directory` | No | `.` | Working directory for commands |
 
-**Secrets:**
+**Secrets:** `deploy-token` — Deployment token (Vercel, Netlify, AWS, etc.)
 
-| Secret | Required | Description |
-|--------|----------|-------------|
-| `deploy-token` | No | Deployment token (Vercel, Netlify, AWS, etc.) |
+### Security (`security.yml`)
+
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `language` | Yes | `node` | `node`, `python`, or `both` |
+| `node-version` | No | `20` | Node.js version |
+| `python-version` | No | `3.12` | Python version |
+| `package-manager` | No | `npm` | `npm`, `yarn`, `pnpm`, `pip`, or `poetry` |
+| `run-codeql` | No | `false` | Enable CodeQL static analysis |
+| `codeql-languages` | No | `javascript` | Comma-separated CodeQL languages |
+| `severity-threshold` | No | `high` | Minimum severity to fail on: `low`, `moderate`, `high`, `critical` |
+| `working-directory` | No | `.` | Working directory for commands |
+
+### Release (`release.yml`)
+
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `language` | No | `node` | `node`, `python`, or `other` |
+| `node-version` | No | `20` | Node.js version |
+| `python-version` | No | `3.12` | Python version |
+| `package-manager` | No | `npm` | `npm`, `yarn`, `pnpm`, `pip`, or `poetry` |
+| `release-type` | No | `semantic-release` | `semantic-release`, `conventional-changelog`, or `manual` |
+| `draft` | No | `false` | Create release as a draft |
+| `prerelease` | No | `false` | Mark release as a prerelease |
+| `generate-changelog` | No | `true` | Auto-generate release notes |
+| `tag-prefix` | No | `v` | Tag prefix |
+| `working-directory` | No | `.` | Working directory for commands |
+
+**Secrets:** `npm-token` — NPM publish token | `pypi-token` — PyPI publish token
+
+### Docker (`docker.yml`)
+
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `image-name` | **Yes** | — | Docker image name |
+| `registry` | No | `ghcr` | `ghcr`, `dockerhub`, or `ecr` |
+| `dockerfile` | No | `Dockerfile` | Path to Dockerfile |
+| `context` | No | `.` | Docker build context path |
+| `platforms` | No | `linux/amd64` | Target platforms (comma-separated) |
+| `build-args` | No | — | Build args (newline-separated `KEY=VALUE`) |
+| `push` | No | `true` | Push image after build |
+| `tag-strategy` | No | `semver` | `semver`, `sha`, `branch`, or `custom` |
+| `custom-tags` | No | — | Custom tags (when strategy is `custom`) |
+| `cache` | No | `true` | Enable Docker layer caching |
+
+**Secrets:** `registry-username` — Registry username | `registry-password` — Registry password/token
+
+### Preview (`preview.yml`)
+
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `provider` | No | `vercel` | `vercel`, `netlify`, or `custom` |
+| `language` | No | `node` | `node`, `python`, or `other` |
+| `node-version` | No | `20` | Node.js version |
+| `package-manager` | No | `npm` | `npm`, `yarn`, or `pnpm` |
+| `build-command` | No | — | Custom build command |
+| `install-command` | No | — | Custom install command |
+| `deploy-command` | No | — | Custom deploy command (for custom provider) |
+| `working-directory` | No | `.` | Working directory for commands |
+| `vercel-org-id` | No | — | Vercel organization ID |
+| `vercel-project-id` | No | — | Vercel project ID |
+
+**Secrets:** `deploy-token` — Deploy token (Vercel, Netlify, etc.)
+
+### Code Quality (`code-quality.yml`)
+
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `language` | Yes | `node` | `node`, `python`, or `both` |
+| `node-version` | No | `20` | Node.js version |
+| `python-version` | No | `3.12` | Python version |
+| `package-manager` | No | `npm` | `npm`, `yarn`, `pnpm`, `pip`, or `poetry` |
+| `run-formatter` | No | `true` | Run code formatter check |
+| `run-typecheck` | No | `true` | Run type checking |
+| `run-coverage` | No | `false` | Run test coverage reporting |
+| `formatter-command` | No | — | Custom formatter command |
+| `typecheck-command` | No | — | Custom type check command |
+| `coverage-command` | No | — | Custom coverage command |
+| `coverage-threshold` | No | `0` | Minimum coverage % to pass |
+| `install-command` | No | — | Custom install command |
+| `working-directory` | No | `.` | Working directory for commands |
+
+**Secrets:** `codecov-token` — Codecov upload token
+
+### Notify (`notify.yml`)
+
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `provider` | Yes | `slack` | `slack`, `discord`, or `both` |
+| `status` | No | `success` | `success`, `failure`, `cancelled`, or custom |
+| `title` | No | — | Notification title |
+| `message` | No | — | Custom message |
+| `mention-on-failure` | No | — | Mention on failure (`@channel`, role ID, etc.) |
+| `include-commit-info` | No | `true` | Include commit SHA and author |
+
+**Secrets:** `slack-webhook-url` — Slack webhook | `discord-webhook-url` — Discord webhook
+
+### Stale (`stale.yml`)
+
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `days-before-stale` | No | `60` | Days of inactivity before stale |
+| `days-before-close` | No | `14` | Days after stale before close |
+| `stale-issue-message` | No | *(built-in)* | Message for stale issues |
+| `stale-pr-message` | No | *(built-in)* | Message for stale PRs |
+| `stale-issue-label` | No | `stale` | Label for stale issues |
+| `stale-pr-label` | No | `stale` | Label for stale PRs |
+| `exempt-issue-labels` | No | `pinned,security,bug` | Labels that prevent stale marking |
+| `exempt-pr-labels` | No | `pinned,security` | Labels that prevent stale marking |
+| `operations-per-run` | No | `100` | Max operations per run |
+
+### Auto Label (`label.yml`)
+
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `config-path` | No | `.github/labeler.yml` | Path to labeler config |
+| `sync-labels` | No | `false` | Remove labels when files are reverted |
+| `dot` | No | `true` | Match dotfiles |
+| `use-default-config` | No | `true` | Use built-in rules (frontend, backend, docs, ci, deps, tests, config) |
 
 ---
 
@@ -73,12 +199,8 @@ Use these workflows from any repo by referencing them with `workflow_call`.
 ### Node.js project (npm)
 
 ```yaml
-# .github/workflows/ci.yml
 name: CI
-on:
-  push:
-    branches: [main]
-  pull_request:
+on: [push, pull_request]
 
 jobs:
   ci:
@@ -89,11 +211,10 @@ jobs:
       package-manager: npm
 ```
 
-### Next.js project (pnpm)
+### Next.js project (pnpm) — full pipeline
 
 ```yaml
-# .github/workflows/ci.yml
-name: CI
+name: Pipeline
 on:
   push:
     branches: [main]
@@ -107,44 +228,56 @@ jobs:
       node-version: "20"
       package-manager: pnpm
 
+  quality:
+    uses: groupsmix/shared-workflows/.github/workflows/code-quality.yml@main
+    with:
+      language: node
+      package-manager: pnpm
+      run-coverage: true
+    secrets:
+      codecov-token: ${{ secrets.CODECOV_TOKEN }}
+
+  security:
+    uses: groupsmix/shared-workflows/.github/workflows/security.yml@main
+    with:
+      language: node
+      package-manager: pnpm
+      run-codeql: true
+      codeql-languages: javascript
+
   build:
+    needs: ci
     uses: groupsmix/shared-workflows/.github/workflows/build.yml@main
     with:
       language: node
-      node-version: "20"
       package-manager: pnpm
       upload-artifact: true
       artifact-path: .next
-```
 
-### Python project (pip)
-
-```yaml
-# .github/workflows/ci.yml
-name: CI
-on:
-  push:
-    branches: [main]
-  pull_request:
-
-jobs:
-  ci:
-    uses: groupsmix/shared-workflows/.github/workflows/ci.yml@main
+  preview:
+    needs: build
+    if: github.event_name == 'pull_request'
+    uses: groupsmix/shared-workflows/.github/workflows/preview.yml@main
     with:
-      language: python
-      python-version: "3.12"
-      package-manager: pip
+      provider: vercel
+      package-manager: pnpm
+      vercel-org-id: ${{ vars.VERCEL_ORG_ID }}
+      vercel-project-id: ${{ vars.VERCEL_PROJECT_ID }}
+    secrets:
+      deploy-token: ${{ secrets.VERCEL_TOKEN }}
+
+  label:
+    if: github.event_name == 'pull_request'
+    uses: groupsmix/shared-workflows/.github/workflows/label.yml@main
+    with:
+      use-default-config: true
 ```
 
 ### Python project (Poetry)
 
 ```yaml
-# .github/workflows/ci.yml
 name: CI
-on:
-  push:
-    branches: [main]
-  pull_request:
+on: [push, pull_request]
 
 jobs:
   ci:
@@ -153,17 +286,26 @@ jobs:
       language: python
       python-version: "3.12"
       package-manager: poetry
+
+  quality:
+    uses: groupsmix/shared-workflows/.github/workflows/code-quality.yml@main
+    with:
+      language: python
+      package-manager: poetry
+      run-coverage: true
+
+  security:
+    uses: groupsmix/shared-workflows/.github/workflows/security.yml@main
+    with:
+      language: python
+      package-manager: poetry
 ```
 
 ### Mixed project (Node.js + Python)
 
 ```yaml
-# .github/workflows/ci.yml
 name: CI
-on:
-  push:
-    branches: [main]
-  pull_request:
+on: [push, pull_request]
 
 jobs:
   ci:
@@ -173,33 +315,36 @@ jobs:
       node-version: "20"
       python-version: "3.12"
       package-manager: npm
+
+  quality:
+    uses: groupsmix/shared-workflows/.github/workflows/code-quality.yml@main
+    with:
+      language: both
+      package-manager: npm
 ```
 
-### Custom commands
+### Docker build + push to GHCR
 
 ```yaml
-# .github/workflows/ci.yml
-name: CI
+name: Docker
 on:
   push:
-    branches: [main]
-  pull_request:
+    tags: ["v*"]
 
 jobs:
-  ci:
-    uses: groupsmix/shared-workflows/.github/workflows/ci.yml@main
+  docker:
+    uses: groupsmix/shared-workflows/.github/workflows/docker.yml@main
     with:
-      language: node
-      node-version: "18"
-      package-manager: yarn
-      lint-command: "yarn eslint src/ --ext .ts,.tsx"
-      test-command: "yarn jest --coverage"
+      image-name: my-app
+      registry: ghcr
+      platforms: linux/amd64,linux/arm64
+      tag-strategy: semver
+      cache: true
 ```
 
-### Build + Deploy on merge to main
+### Build + Deploy with Slack notification
 
 ```yaml
-# .github/workflows/deploy.yml
 name: Deploy
 on:
   push:
@@ -223,26 +368,67 @@ jobs:
       deploy-command: "npx vercel --prod --token $DEPLOY_TOKEN"
     secrets:
       deploy-token: ${{ secrets.VERCEL_TOKEN }}
+
+  notify:
+    needs: deploy
+    if: always()
+    uses: groupsmix/shared-workflows/.github/workflows/notify.yml@main
+    with:
+      provider: slack
+      status: ${{ needs.deploy.result }}
+      mention-on-failure: "@channel"
+    secrets:
+      slack-webhook-url: ${{ secrets.SLACK_WEBHOOK }}
 ```
 
-### Deploy a Python app (e.g., to Railway)
+### Release with semantic versioning
 
 ```yaml
-# .github/workflows/deploy.yml
-name: Deploy
+name: Release
 on:
   push:
     branches: [main]
 
 jobs:
-  deploy:
-    uses: groupsmix/shared-workflows/.github/workflows/deploy.yml@main
+  release:
+    uses: groupsmix/shared-workflows/.github/workflows/release.yml@main
     with:
-      language: python
-      package-manager: poetry
-      deploy-command: "railway up --service my-app"
-    secrets:
-      deploy-token: ${{ secrets.RAILWAY_TOKEN }}
+      release-type: semantic-release
+      language: node
+```
+
+### Auto-close stale issues & PRs
+
+```yaml
+name: Stale
+on:
+  schedule:
+    - cron: "0 0 * * *"
+
+jobs:
+  stale:
+    uses: groupsmix/shared-workflows/.github/workflows/stale.yml@main
+    with:
+      days-before-stale: 30
+      days-before-close: 7
+      exempt-issue-labels: "pinned,security,bug"
+```
+
+### Custom lint/test commands
+
+```yaml
+name: CI
+on: [push, pull_request]
+
+jobs:
+  ci:
+    uses: groupsmix/shared-workflows/.github/workflows/ci.yml@main
+    with:
+      language: node
+      node-version: "18"
+      package-manager: yarn
+      lint-command: "yarn eslint src/ --ext .ts,.tsx"
+      test-command: "yarn jest --coverage"
 ```
 
 ---
@@ -255,7 +441,8 @@ These workflows use [`workflow_call`](https://docs.github.com/en/actions/using-w
 
 - **Node.js** — npm, yarn, pnpm
 - **Python** — pip, poetry
-- **Frameworks** — Next.js, React, FastAPI, Django, Flask, and anything that uses standard build/test/lint commands
+- **Frameworks** — Next.js, React, FastAPI, Django, Flask, and anything with standard build/test/lint commands
+- **Docker** — any Dockerfile-based project
 
 **Key features:**
 
@@ -263,7 +450,17 @@ These workflows use [`workflow_call`](https://docs.github.com/en/actions/using-w
 - Configurable lint, test, build, and deploy commands
 - Artifact upload support for build outputs
 - GitHub Environments support for deploy approvals
-- Secret passing for deploy tokens
+- Secret passing for deploy tokens, registry credentials, webhooks
+- Dependency vulnerability scanning (npm audit, pip-audit)
+- CodeQL static analysis
+- Automated releases with semantic-release or conventional commits
+- Docker multi-platform builds with layer caching
+- PR preview deployments (Vercel, Netlify, custom)
+- Code formatting (Prettier, Black) and type checking (tsc, mypy)
+- Test coverage with Codecov integration
+- Slack and Discord notifications
+- Auto-stale issue/PR management
+- Auto-labeling PRs by file paths
 
 ---
 

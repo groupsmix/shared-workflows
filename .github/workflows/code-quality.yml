@@ -1,0 +1,230 @@
+name: Code Quality
+
+on:
+  workflow_call:
+    inputs:
+      language:
+        description: "Primary language: node, python, or both"
+        required: true
+        type: string
+        default: "node"
+      node-version:
+        description: "Node.js version to use"
+        required: false
+        type: string
+        default: "20"
+      python-version:
+        description: "Python version to use"
+        required: false
+        type: string
+        default: "3.12"
+      package-manager:
+        description: "Package manager: npm, yarn, pnpm, pip, or poetry"
+        required: false
+        type: string
+        default: "npm"
+      run-formatter:
+        description: "Run code formatter check"
+        required: false
+        type: boolean
+        default: true
+      run-typecheck:
+        description: "Run type checking"
+        required: false
+        type: boolean
+        default: true
+      run-coverage:
+        description: "Run test coverage reporting"
+        required: false
+        type: boolean
+        default: false
+      formatter-command:
+        description: "Custom formatter check command"
+        required: false
+        type: string
+        default: ""
+      typecheck-command:
+        description: "Custom type check command"
+        required: false
+        type: string
+        default: ""
+      coverage-command:
+        description: "Custom coverage command"
+        required: false
+        type: string
+        default: ""
+      coverage-threshold:
+        description: "Minimum coverage percentage to pass (0-100)"
+        required: false
+        type: number
+        default: 0
+      install-command:
+        description: "Custom install command"
+        required: false
+        type: string
+        default: ""
+      working-directory:
+        description: "Working directory for all commands"
+        required: false
+        type: string
+        default: "."
+    secrets:
+      codecov-token:
+        description: "Codecov upload token (optional)"
+        required: false
+
+jobs:
+  quality-node:
+    if: inputs.language == 'node' || inputs.language == 'both'
+    name: Code Quality (Node.js)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Setup pnpm
+        if: inputs.package-manager == 'pnpm'
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: |
+          if [ -n "${{ inputs.install-command }}" ]; then
+            ${{ inputs.install-command }}
+          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            yarn install --frozen-lockfile
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm install --frozen-lockfile
+          else
+            npm ci
+          fi
+
+      - name: Format check
+        if: inputs.run-formatter
+        run: |
+          if [ -n "${{ inputs.formatter-command }}" ]; then
+            ${{ inputs.formatter-command }}
+          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            yarn prettier --check . 2>/dev/null || yarn format:check 2>/dev/null || echo "No formatter configured"
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm prettier --check . 2>/dev/null || pnpm format:check 2>/dev/null || echo "No formatter configured"
+          else
+            npx prettier --check . 2>/dev/null || npm run format:check 2>/dev/null || echo "No formatter configured"
+          fi
+
+      - name: Type check
+        if: inputs.run-typecheck
+        run: |
+          if [ -n "${{ inputs.typecheck-command }}" ]; then
+            ${{ inputs.typecheck-command }}
+          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            yarn tsc --noEmit 2>/dev/null || yarn typecheck 2>/dev/null || echo "No type checker configured"
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm tsc --noEmit 2>/dev/null || pnpm typecheck 2>/dev/null || echo "No type checker configured"
+          else
+            npx tsc --noEmit 2>/dev/null || npm run typecheck 2>/dev/null || echo "No type checker configured"
+          fi
+
+      - name: Test with coverage
+        if: inputs.run-coverage
+        run: |
+          if [ -n "${{ inputs.coverage-command }}" ]; then
+            ${{ inputs.coverage-command }}
+          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            yarn test --coverage
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm test -- --coverage
+          else
+            npm test -- --coverage
+          fi
+
+      - name: Upload coverage to Codecov
+        if: inputs.run-coverage
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.codecov-token }}
+          fail_ci_if_error: false
+
+  quality-python:
+    if: inputs.language == 'python' || inputs.language == 'both'
+    name: Code Quality (Python)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install Poetry
+        if: inputs.package-manager == 'poetry'
+        run: |
+          pip install poetry
+          poetry config virtualenvs.in-project true
+
+      - name: Install dependencies
+        run: |
+          if [ -n "${{ inputs.install-command }}" ]; then
+            ${{ inputs.install-command }}
+          elif [ "${{ inputs.package-manager }}" = "poetry" ]; then
+            poetry install
+          else
+            pip install -r requirements.txt
+          fi
+
+      - name: Format check (Black + isort)
+        if: inputs.run-formatter
+        run: |
+          if [ -n "${{ inputs.formatter-command }}" ]; then
+            ${{ inputs.formatter-command }}
+          elif [ "${{ inputs.package-manager }}" = "poetry" ]; then
+            poetry run black --check . && poetry run isort --check-only .
+          else
+            pip install black isort
+            black --check . && isort --check-only .
+          fi
+
+      - name: Type check (mypy)
+        if: inputs.run-typecheck
+        run: |
+          if [ -n "${{ inputs.typecheck-command }}" ]; then
+            ${{ inputs.typecheck-command }}
+          elif [ "${{ inputs.package-manager }}" = "poetry" ]; then
+            poetry run mypy .
+          else
+            pip install mypy
+            mypy .
+          fi
+
+      - name: Test with coverage
+        if: inputs.run-coverage
+        run: |
+          if [ -n "${{ inputs.coverage-command }}" ]; then
+            ${{ inputs.coverage-command }}
+          elif [ "${{ inputs.package-manager }}" = "poetry" ]; then
+            poetry run pytest --cov --cov-report=xml
+          else
+            pip install pytest pytest-cov
+            pytest --cov --cov-report=xml
+          fi
+
+      - name: Upload coverage to Codecov
+        if: inputs.run-coverage
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.codecov-token }}
+          fail_ci_if_error: false

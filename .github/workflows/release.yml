@@ -1,0 +1,200 @@
+name: Release
+
+on:
+  workflow_call:
+    inputs:
+      language:
+        description: "Primary language: node, python, or other"
+        required: false
+        type: string
+        default: "node"
+      node-version:
+        description: "Node.js version to use"
+        required: false
+        type: string
+        default: "20"
+      python-version:
+        description: "Python version to use"
+        required: false
+        type: string
+        default: "3.12"
+      package-manager:
+        description: "Package manager: npm, yarn, pnpm, pip, or poetry"
+        required: false
+        type: string
+        default: "npm"
+      release-type:
+        description: "Release strategy: semantic-release, conventional-changelog, or manual"
+        required: false
+        type: string
+        default: "semantic-release"
+      draft:
+        description: "Create release as a draft"
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        description: "Mark release as a prerelease"
+        required: false
+        type: boolean
+        default: false
+      generate-changelog:
+        description: "Auto-generate release notes from commits"
+        required: false
+        type: boolean
+        default: true
+      tag-prefix:
+        description: "Tag prefix (e.g., v)"
+        required: false
+        type: string
+        default: "v"
+      working-directory:
+        description: "Working directory for all commands"
+        required: false
+        type: string
+        default: "."
+    secrets:
+      npm-token:
+        description: "NPM token for publishing (optional)"
+        required: false
+      pypi-token:
+        description: "PyPI token for publishing (optional)"
+        required: false
+
+jobs:
+  semantic-release:
+    if: inputs.release-type == 'semantic-release'
+    name: Semantic Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install dependencies
+        run: |
+          if [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            yarn install --frozen-lockfile
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            npm install -g pnpm && pnpm install --frozen-lockfile
+          else
+            npm ci
+          fi
+
+      - name: Run semantic-release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NPM_TOKEN: ${{ secrets.npm-token }}
+        run: npx semantic-release
+
+  conventional-changelog:
+    if: inputs.release-type == 'conventional-changelog'
+    name: Conventional Changelog Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          npx conventional-changelog-cli -p angular -i CHANGELOG.md -s
+          echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "${{ inputs.tag-prefix }}${{ steps.changelog.outputs.version }}"
+          body_path: CHANGELOG.md
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: ${{ inputs.generate-changelog }}
+
+  manual-release:
+    if: inputs.release-type == 'manual'
+    name: Manual Tag Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest tag
+        id: tag
+        run: |
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "latest_tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.latest_tag }}
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: ${{ inputs.generate-changelog }}
+
+  publish-python:
+    if: inputs.language == 'python'
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install Poetry
+        if: inputs.package-manager == 'poetry'
+        run: pip install poetry
+
+      - name: Build package
+        run: |
+          if [ "${{ inputs.package-manager }}" = "poetry" ]; then
+            poetry build
+          else
+            pip install build
+            python -m build
+          fi
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.pypi-token }}
+        run: |
+          pip install twine
+          twine upload dist/*

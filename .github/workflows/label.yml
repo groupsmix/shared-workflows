@@ -1,0 +1,149 @@
+name: Auto Label
+
+on:
+  workflow_call:
+    inputs:
+      config-path:
+        description: "Path to labeler config file (YAML)"
+        required: false
+        type: string
+        default: ".github/labeler.yml"
+      sync-labels:
+        description: "Remove labels when matching files are reverted"
+        required: false
+        type: boolean
+        default: false
+      dot:
+        description: "Match dotfiles in glob patterns"
+        required: false
+        type: boolean
+        default: true
+      use-default-config:
+        description: "Use built-in default label rules (frontend, backend, docs, ci, deps, tests)"
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  label:
+    name: Auto Label PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create default labeler config
+        if: inputs.use-default-config
+        run: |
+          mkdir -p .github
+          cat > .github/labeler-default.yml << 'EOF'
+          frontend:
+            - changed-files:
+              - any-glob-to-any-file:
+                - 'src/**/*.{js,jsx,ts,tsx,vue,svelte}'
+                - 'components/**/*'
+                - 'pages/**/*'
+                - 'app/**/*.{js,jsx,ts,tsx}'
+                - 'public/**/*'
+                - 'styles/**/*'
+                - '*.css'
+                - '*.scss'
+                - '*.sass'
+                - '*.less'
+
+          backend:
+            - changed-files:
+              - any-glob-to-any-file:
+                - 'api/**/*'
+                - 'server/**/*'
+                - 'src/**/*.py'
+                - 'app/**/*.py'
+                - '*.py'
+                - 'routes/**/*'
+                - 'controllers/**/*'
+                - 'models/**/*'
+                - 'services/**/*'
+
+          documentation:
+            - changed-files:
+              - any-glob-to-any-file:
+                - '**/*.md'
+                - 'docs/**/*'
+                - 'wiki/**/*'
+                - 'README*'
+                - 'CHANGELOG*'
+                - 'LICENSE*'
+
+          ci:
+            - changed-files:
+              - any-glob-to-any-file:
+                - '.github/**/*'
+                - '.circleci/**/*'
+                - '.travis.yml'
+                - 'Jenkinsfile'
+                - 'Dockerfile*'
+                - 'docker-compose*'
+                - '.dockerignore'
+
+          dependencies:
+            - changed-files:
+              - any-glob-to-any-file:
+                - 'package.json'
+                - 'package-lock.json'
+                - 'yarn.lock'
+                - 'pnpm-lock.yaml'
+                - 'requirements*.txt'
+                - 'Pipfile*'
+                - 'poetry.lock'
+                - 'pyproject.toml'
+                - 'Gemfile*'
+                - 'go.mod'
+                - 'go.sum'
+                - 'Cargo.toml'
+                - 'Cargo.lock'
+
+          tests:
+            - changed-files:
+              - any-glob-to-any-file:
+                - '**/*.test.*'
+                - '**/*.spec.*'
+                - '**/*_test.*'
+                - '**/test_*'
+                - 'tests/**/*'
+                - '__tests__/**/*'
+                - 'test/**/*'
+                - 'spec/**/*'
+
+          config:
+            - changed-files:
+              - any-glob-to-any-file:
+                - '*.config.*'
+                - '.env*'
+                - '.eslintrc*'
+                - '.prettierrc*'
+                - 'tsconfig*'
+                - '.babelrc*'
+                - 'webpack.config.*'
+                - 'vite.config.*'
+                - 'next.config.*'
+                - 'tailwind.config.*'
+          EOF
+
+      - name: Label PR (default config)
+        if: inputs.use-default-config
+        uses: actions/labeler@v5
+        with:
+          configuration-path: .github/labeler-default.yml
+          sync-labels: ${{ inputs.sync-labels }}
+          dot: ${{ inputs.dot }}
+
+      - name: Label PR (custom config)
+        if: "!inputs.use-default-config"
+        uses: actions/labeler@v5
+        with:
+          configuration-path: ${{ inputs.config-path }}
+          sync-labels: ${{ inputs.sync-labels }}
+          dot: ${{ inputs.dot }}

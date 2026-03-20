@@ -1,0 +1,132 @@
+name: Docker
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        description: "Docker image name (e.g., my-app)"
+        required: true
+        type: string
+      registry:
+        description: "Container registry: ghcr, dockerhub, or ecr"
+        required: false
+        type: string
+        default: "ghcr"
+      dockerfile:
+        description: "Path to Dockerfile"
+        required: false
+        type: string
+        default: "Dockerfile"
+      context:
+        description: "Docker build context path"
+        required: false
+        type: string
+        default: "."
+      platforms:
+        description: "Target platforms (e.g., linux/amd64,linux/arm64)"
+        required: false
+        type: string
+        default: "linux/amd64"
+      build-args:
+        description: "Docker build arguments (newline-separated KEY=VALUE)"
+        required: false
+        type: string
+        default: ""
+      push:
+        description: "Push the image after building"
+        required: false
+        type: boolean
+        default: true
+      tag-strategy:
+        description: "Tagging strategy: semver, sha, branch, or custom"
+        required: false
+        type: string
+        default: "semver"
+      custom-tags:
+        description: "Custom tags (newline-separated, used when tag-strategy is custom)"
+        required: false
+        type: string
+        default: ""
+      cache:
+        description: "Enable Docker layer caching"
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      registry-username:
+        description: "Registry username (required for dockerhub/ecr)"
+        required: false
+      registry-password:
+        description: "Registry password or token"
+        required: false
+
+jobs:
+  docker:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        if: contains(inputs.platforms, ',')
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        if: inputs.registry == 'ghcr'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.registry-password || github.token }}
+
+      - name: Login to Docker Hub
+        if: inputs.registry == 'dockerhub'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.registry-username }}
+          password: ${{ secrets.registry-password }}
+
+      - name: Login to Amazon ECR
+        if: inputs.registry == 'ecr'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.registry-username }}
+          username: AWS
+          password: ${{ secrets.registry-password }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ inputs.registry == 'ghcr' && format('ghcr.io/{0}/{1}', github.repository_owner, inputs.image-name) || '' }}
+            ${{ inputs.registry == 'dockerhub' && format('{0}/{1}', secrets.registry-username, inputs.image-name) || '' }}
+            ${{ inputs.registry == 'ecr' && format('{0}/{1}', secrets.registry-username, inputs.image-name) || '' }}
+          tags: |
+            ${{ inputs.tag-strategy == 'semver' && 'type=semver,pattern={{version}}' || '' }}
+            ${{ inputs.tag-strategy == 'semver' && 'type=semver,pattern={{major}}.{{minor}}' || '' }}
+            ${{ inputs.tag-strategy == 'semver' && 'type=semver,pattern={{major}}' || '' }}
+            ${{ inputs.tag-strategy == 'sha' && 'type=sha,prefix=' || '' }}
+            ${{ inputs.tag-strategy == 'branch' && 'type=ref,event=branch' || '' }}
+            ${{ inputs.tag-strategy == 'custom' && inputs.custom-tags || '' }}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          push: ${{ inputs.push }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ inputs.build-args }}
+          cache-from: ${{ inputs.cache && 'type=gha' || '' }}
+          cache-to: ${{ inputs.cache && 'type=gha,mode=max' || '' }}
