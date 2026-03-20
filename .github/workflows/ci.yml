@@ -1,0 +1,188 @@
+name: CI
+
+on:
+  workflow_call:
+    inputs:
+      language:
+        description: "Primary language: node, python, or both"
+        required: true
+        type: string
+        default: "node"
+      node-version:
+        description: "Node.js version to use"
+        required: false
+        type: string
+        default: "20"
+      python-version:
+        description: "Python version to use"
+        required: false
+        type: string
+        default: "3.12"
+      package-manager:
+        description: "Package manager: npm, yarn, pnpm, pip, or poetry"
+        required: false
+        type: string
+        default: "npm"
+      lint-command:
+        description: "Custom lint command (overrides default)"
+        required: false
+        type: string
+        default: ""
+      test-command:
+        description: "Custom test command (overrides default)"
+        required: false
+        type: string
+        default: ""
+      install-command:
+        description: "Custom install command (overrides default)"
+        required: false
+        type: string
+        default: ""
+      working-directory:
+        description: "Working directory for all commands"
+        required: false
+        type: string
+        default: "."
+
+jobs:
+  ci-node:
+    if: inputs.language == 'node' || inputs.language == 'both'
+    name: CI (Node.js)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Setup pnpm
+        if: inputs.package-manager == 'pnpm'
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            ~/.yarn/cache
+            ~/.pnpm-store
+            node_modules
+          key: ${{ runner.os }}-node-${{ inputs.package-manager }}-${{ hashFiles('**/package-lock.json', '**/yarn.lock', '**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ inputs.package-manager }}-
+
+      - name: Install dependencies
+        run: |
+          if [ -n "${{ inputs.install-command }}" ]; then
+            ${{ inputs.install-command }}
+          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            yarn install --frozen-lockfile
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm install --frozen-lockfile
+          else
+            npm ci
+          fi
+
+      - name: Lint
+        run: |
+          if [ -n "${{ inputs.lint-command }}" ]; then
+            ${{ inputs.lint-command }}
+          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            yarn lint
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm lint
+          else
+            npm run lint
+          fi
+
+      - name: Test
+        run: |
+          if [ -n "${{ inputs.test-command }}" ]; then
+            ${{ inputs.test-command }}
+          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            yarn test
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm test
+          else
+            npm test
+          fi
+
+  ci-python:
+    if: inputs.language == 'python' || inputs.language == 'both'
+    name: CI (Python)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Cache pip dependencies
+        if: inputs.package-manager == 'pip'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Poetry
+        if: inputs.package-manager == 'poetry'
+        run: |
+          pip install poetry
+          poetry config virtualenvs.in-project true
+
+      - name: Cache Poetry dependencies
+        if: inputs.package-manager == 'poetry'
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-poetry-
+
+      - name: Install dependencies
+        run: |
+          if [ -n "${{ inputs.install-command }}" ]; then
+            ${{ inputs.install-command }}
+          elif [ "${{ inputs.package-manager }}" = "poetry" ]; then
+            poetry install
+          else
+            pip install -r requirements.txt
+          fi
+
+      - name: Lint
+        run: |
+          if [ -n "${{ inputs.lint-command }}" ]; then
+            ${{ inputs.lint-command }}
+          elif [ "${{ inputs.package-manager }}" = "poetry" ]; then
+            poetry run ruff check .
+          else
+            pip install ruff
+            ruff check .
+          fi
+
+      - name: Test
+        run: |
+          if [ -n "${{ inputs.test-command }}" ]; then
+            ${{ inputs.test-command }}
+          elif [ "${{ inputs.package-manager }}" = "poetry" ]; then
+            poetry run pytest
+          else
+            pip install pytest
+            pytest
+          fi

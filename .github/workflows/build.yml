@@ -1,0 +1,170 @@
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      language:
+        description: "Primary language: node, python, or both"
+        required: true
+        type: string
+        default: "node"
+      node-version:
+        description: "Node.js version to use"
+        required: false
+        type: string
+        default: "20"
+      python-version:
+        description: "Python version to use"
+        required: false
+        type: string
+        default: "3.12"
+      package-manager:
+        description: "Package manager: npm, yarn, pnpm, pip, or poetry"
+        required: false
+        type: string
+        default: "npm"
+      build-command:
+        description: "Custom build command (overrides default)"
+        required: false
+        type: string
+        default: ""
+      install-command:
+        description: "Custom install command (overrides default)"
+        required: false
+        type: string
+        default: ""
+      working-directory:
+        description: "Working directory for all commands"
+        required: false
+        type: string
+        default: "."
+      upload-artifact:
+        description: "Whether to upload build artifacts"
+        required: false
+        type: boolean
+        default: false
+      artifact-name:
+        description: "Name of the uploaded artifact"
+        required: false
+        type: string
+        default: "build-output"
+      artifact-path:
+        description: "Path to the build output to upload"
+        required: false
+        type: string
+        default: "dist"
+
+jobs:
+  build-node:
+    if: inputs.language == 'node' || inputs.language == 'both'
+    name: Build (Node.js)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Setup pnpm
+        if: inputs.package-manager == 'pnpm'
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            ~/.yarn/cache
+            ~/.pnpm-store
+            node_modules
+          key: ${{ runner.os }}-node-${{ inputs.package-manager }}-${{ hashFiles('**/package-lock.json', '**/yarn.lock', '**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ inputs.package-manager }}-
+
+      - name: Install dependencies
+        run: |
+          if [ -n "${{ inputs.install-command }}" ]; then
+            ${{ inputs.install-command }}
+          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            yarn install --frozen-lockfile
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm install --frozen-lockfile
+          else
+            npm ci
+          fi
+
+      - name: Build
+        run: |
+          if [ -n "${{ inputs.build-command }}" ]; then
+            ${{ inputs.build-command }}
+          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            yarn build
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm build
+          else
+            npm run build
+          fi
+
+      - name: Upload build artifacts
+        if: inputs.upload-artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ inputs.working-directory }}/${{ inputs.artifact-path }}
+
+  build-python:
+    if: inputs.language == 'python' || inputs.language == 'both'
+    name: Build (Python)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install Poetry
+        if: inputs.package-manager == 'poetry'
+        run: |
+          pip install poetry
+          poetry config virtualenvs.in-project true
+
+      - name: Install dependencies
+        run: |
+          if [ -n "${{ inputs.install-command }}" ]; then
+            ${{ inputs.install-command }}
+          elif [ "${{ inputs.package-manager }}" = "poetry" ]; then
+            poetry install
+          else
+            pip install -r requirements.txt
+          fi
+
+      - name: Build
+        run: |
+          if [ -n "${{ inputs.build-command }}" ]; then
+            ${{ inputs.build-command }}
+          elif [ "${{ inputs.package-manager }}" = "poetry" ]; then
+            poetry build
+          else
+            python -m build
+          fi
+
+      - name: Upload build artifacts
+        if: inputs.upload-artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ inputs.working-directory }}/${{ inputs.artifact-path }}
