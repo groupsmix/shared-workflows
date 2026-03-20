@@ -134,7 +134,7 @@ jobs:
 
       - name: Label PR (default config)
         if: inputs.use-default-config
-        uses: actions/labeler@v5
+        uses: actions/labeler@v6
         with:
           configuration-path: .github/labeler-default.yml
           sync-labels: ${{ inputs.sync-labels }}
@@ -142,7 +142,7 @@ jobs:
 
       - name: Label PR (custom config)
         if: "!inputs.use-default-config"
-        uses: actions/labeler@v5
+        uses: actions/labeler@v6
         with:
           configuration-path: ${{ inputs.config-path }}
           sync-labels: ${{ inputs.sync-labels }}
