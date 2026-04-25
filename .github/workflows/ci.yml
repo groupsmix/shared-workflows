@@ -80,36 +80,45 @@ jobs:
             ${{ runner.os }}-node-${{ inputs.package-manager }}-
 
       - name: Install dependencies
+        env:
+          INSTALL_CMD: ${{ inputs.install-command }}
+          PKG_MGR: ${{ inputs.package-manager }}
         run: |
-          if [ -n "${{ inputs.install-command }}" ]; then
-            ${{ inputs.install-command }}
-          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+          if [ -n "$INSTALL_CMD" ]; then
+            eval "$INSTALL_CMD"
+          elif [ "$PKG_MGR" = "yarn" ]; then
             yarn install --frozen-lockfile
-          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+          elif [ "$PKG_MGR" = "pnpm" ]; then
             pnpm install --frozen-lockfile
           else
             npm ci
           fi
 
       - name: Lint
+        env:
+          LINT_CMD: ${{ inputs.lint-command }}
+          PKG_MGR: ${{ inputs.package-manager }}
         run: |
-          if [ -n "${{ inputs.lint-command }}" ]; then
-            ${{ inputs.lint-command }}
-          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+          if [ -n "$LINT_CMD" ]; then
+            eval "$LINT_CMD"
+          elif [ "$PKG_MGR" = "yarn" ]; then
             yarn lint
-          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+          elif [ "$PKG_MGR" = "pnpm" ]; then
             pnpm lint
           else
             npm run lint
           fi
 
       - name: Test
+        env:
+          TEST_CMD: ${{ inputs.test-command }}
+          PKG_MGR: ${{ inputs.package-manager }}
         run: |
-          if [ -n "${{ inputs.test-command }}" ]; then
-            ${{ inputs.test-command }}
-          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+          if [ -n "$TEST_CMD" ]; then
+            eval "$TEST_CMD"
+          elif [ "$PKG_MGR" = "yarn" ]; then
             yarn test
-          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+          elif [ "$PKG_MGR" = "pnpm" ]; then
             pnpm test
           else
             npm test
@@ -156,20 +165,26 @@ jobs:
             ${{ runner.os }}-poetry-
 
       - name: Install dependencies
+        env:
+          INSTALL_CMD: ${{ inputs.install-command }}
+          PKG_MGR: ${{ inputs.package-manager }}
         run: |
-          if [ -n "${{ inputs.install-command }}" ]; then
-            ${{ inputs.install-command }}
-          elif [ "${{ inputs.package-manager }}" = "poetry" ]; then
+          if [ -n "$INSTALL_CMD" ]; then
+            eval "$INSTALL_CMD"
+          elif [ "$PKG_MGR" = "poetry" ]; then
             poetry install
           else
             pip install -r requirements.txt
           fi
 
       - name: Lint
+        env:
+          LINT_CMD: ${{ inputs.lint-command }}
+          PKG_MGR: ${{ inputs.package-manager }}
         run: |
-          if [ -n "${{ inputs.lint-command }}" ]; then
-            ${{ inputs.lint-command }}
-          elif [ "${{ inputs.package-manager }}" = "poetry" ]; then
+          if [ -n "$LINT_CMD" ]; then
+            eval "$LINT_CMD"
+          elif [ "$PKG_MGR" = "poetry" ]; then
             poetry run ruff check .
           else
             pip install ruff
@@ -177,10 +192,13 @@ jobs:
           fi
 
       - name: Test
+        env:
+          TEST_CMD: ${{ inputs.test-command }}
+          PKG_MGR: ${{ inputs.package-manager }}
         run: |
-          if [ -n "${{ inputs.test-command }}" ]; then
-            ${{ inputs.test-command }}
-          elif [ "${{ inputs.package-manager }}" = "poetry" ]; then
+          if [ -n "$TEST_CMD" ]; then
+            eval "$TEST_CMD"
+          elif [ "$PKG_MGR" = "poetry" ]; then
             poetry run pytest
           else
             pip install pytest

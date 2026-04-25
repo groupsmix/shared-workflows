@@ -89,19 +89,22 @@ jobs:
           poetry config virtualenvs.in-project true
 
       - name: Install dependencies
+        env:
+          INSTALL_CMD: ${{ inputs.install-command }}
+          PKG_MGR: ${{ inputs.package-manager }}
         run: |
-          if [ -n "${{ inputs.install-command }}" ]; then
-            ${{ inputs.install-command }}
+          if [ -n "$INSTALL_CMD" ]; then
+            eval "$INSTALL_CMD"
           elif [ "${{ inputs.language }}" = "node" ]; then
-            if [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            if [ "$PKG_MGR" = "yarn" ]; then
               yarn install --frozen-lockfile
-            elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            elif [ "$PKG_MGR" = "pnpm" ]; then
               pnpm install --frozen-lockfile
             else
               npm ci
             fi
           elif [ "${{ inputs.language }}" = "python" ]; then
-            if [ "${{ inputs.package-manager }}" = "poetry" ]; then
+            if [ "$PKG_MGR" = "poetry" ]; then
               poetry install
             else
               pip install -r requirements.txt

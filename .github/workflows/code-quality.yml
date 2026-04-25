@@ -97,12 +97,15 @@ jobs:
           version: latest
 
       - name: Install dependencies
+        env:
+          INSTALL_CMD: ${{ inputs.install-command }}
+          PKG_MGR: ${{ inputs.package-manager }}
         run: |
-          if [ -n "${{ inputs.install-command }}" ]; then
-            ${{ inputs.install-command }}
-          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+          if [ -n "$INSTALL_CMD" ]; then
+            eval "$INSTALL_CMD"
+          elif [ "$PKG_MGR" = "yarn" ]; then
             yarn install --frozen-lockfile
-          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+          elif [ "$PKG_MGR" = "pnpm" ]; then
             pnpm install --frozen-lockfile
           else
             npm ci
@@ -110,12 +113,15 @@ jobs:
 
       - name: Format check
         if: inputs.run-formatter
+        env:
+          FORMATTER_CMD: ${{ inputs.formatter-command }}
+          PKG_MGR: ${{ inputs.package-manager }}
         run: |
-          if [ -n "${{ inputs.formatter-command }}" ]; then
-            ${{ inputs.formatter-command }}
-          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+          if [ -n "$FORMATTER_CMD" ]; then
+            eval "$FORMATTER_CMD"
+          elif [ "$PKG_MGR" = "yarn" ]; then
             yarn prettier --check . 2>/dev/null || yarn format:check 2>/dev/null || echo "No formatter configured"
-          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+          elif [ "$PKG_MGR" = "pnpm" ]; then
             pnpm prettier --check . 2>/dev/null || pnpm format:check 2>/dev/null || echo "No formatter configured"
           else
             npx prettier --check . 2>/dev/null || npm run format:check 2>/dev/null || echo "No formatter configured"
@@ -123,12 +129,15 @@ jobs:
 
       - name: Type check
         if: inputs.run-typecheck
+        env:
+          TYPECHECK_CMD: ${{ inputs.typecheck-command }}
+          PKG_MGR: ${{ inputs.package-manager }}
         run: |
-          if [ -n "${{ inputs.typecheck-command }}" ]; then
-            ${{ inputs.typecheck-command }}
-          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+          if [ -n "$TYPECHECK_CMD" ]; then
+            eval "$TYPECHECK_CMD"
+          elif [ "$PKG_MGR" = "yarn" ]; then
             yarn tsc --noEmit 2>/dev/null || yarn typecheck 2>/dev/null || echo "No type checker configured"
-          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+          elif [ "$PKG_MGR" = "pnpm" ]; then
             pnpm tsc --noEmit 2>/dev/null || pnpm typecheck 2>/dev/null || echo "No type checker configured"
           else
             npx tsc --noEmit 2>/dev/null || npm run typecheck 2>/dev/null || echo "No type checker configured"
@@ -136,12 +145,15 @@ jobs:
 
       - name: Test with coverage
         if: inputs.run-coverage
+        env:
+          COVERAGE_CMD: ${{ inputs.coverage-command }}
+          PKG_MGR: ${{ inputs.package-manager }}
         run: |
-          if [ -n "${{ inputs.coverage-command }}" ]; then
-            ${{ inputs.coverage-command }}
-          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+          if [ -n "$COVERAGE_CMD" ]; then
+            eval "$COVERAGE_CMD"
+          elif [ "$PKG_MGR" = "yarn" ]; then
             yarn test --coverage
-          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+          elif [ "$PKG_MGR" = "pnpm" ]; then
             pnpm test -- --coverage
           else
             npm test -- --coverage
@@ -177,10 +189,13 @@ jobs:
           poetry config virtualenvs.in-project true
 
       - name: Install dependencies
+        env:
+          INSTALL_CMD: ${{ inputs.install-command }}
+          PKG_MGR: ${{ inputs.package-manager }}
         run: |
-          if [ -n "${{ inputs.install-command }}" ]; then
-            ${{ inputs.install-command }}
-          elif [ "${{ inputs.package-manager }}" = "poetry" ]; then
+          if [ -n "$INSTALL_CMD" ]; then
+            eval "$INSTALL_CMD"
+          elif [ "$PKG_MGR" = "poetry" ]; then
             poetry install
           else
             pip install -r requirements.txt
@@ -188,10 +203,13 @@ jobs:
 
       - name: Format check (Black + isort)
         if: inputs.run-formatter
+        env:
+          FORMATTER_CMD: ${{ inputs.formatter-command }}
+          PKG_MGR: ${{ inputs.package-manager }}
         run: |
-          if [ -n "${{ inputs.formatter-command }}" ]; then
-            ${{ inputs.formatter-command }}
-          elif [ "${{ inputs.package-manager }}" = "poetry" ]; then
+          if [ -n "$FORMATTER_CMD" ]; then
+            eval "$FORMATTER_CMD"
+          elif [ "$PKG_MGR" = "poetry" ]; then
             poetry run black --check . && poetry run isort --check-only .
           else
             pip install black isort
@@ -200,10 +218,13 @@ jobs:
 
       - name: Type check (mypy)
         if: inputs.run-typecheck
+        env:
+          TYPECHECK_CMD: ${{ inputs.typecheck-command }}
+          PKG_MGR: ${{ inputs.package-manager }}
         run: |
-          if [ -n "${{ inputs.typecheck-command }}" ]; then
-            ${{ inputs.typecheck-command }}
-          elif [ "${{ inputs.package-manager }}" = "poetry" ]; then
+          if [ -n "$TYPECHECK_CMD" ]; then
+            eval "$TYPECHECK_CMD"
+          elif [ "$PKG_MGR" = "poetry" ]; then
             poetry run mypy .
           else
             pip install mypy
@@ -212,10 +233,13 @@ jobs:
 
       - name: Test with coverage
         if: inputs.run-coverage
+        env:
+          COVERAGE_CMD: ${{ inputs.coverage-command }}
+          PKG_MGR: ${{ inputs.package-manager }}
         run: |
-          if [ -n "${{ inputs.coverage-command }}" ]; then
-            ${{ inputs.coverage-command }}
-          elif [ "${{ inputs.package-manager }}" = "poetry" ]; then
+          if [ -n "$COVERAGE_CMD" ]; then
+            eval "$COVERAGE_CMD"
+          elif [ "$PKG_MGR" = "poetry" ]; then
             poetry run pytest --cov --cov-report=xml
           else
             pip install pytest pytest-cov
