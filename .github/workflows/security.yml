@@ -5,7 +5,7 @@ on:
     inputs:
       language:
         description: "Primary language: node, python, or both"
-        required: true
+        required: false
         type: string
         default: "node"
       node-version:
